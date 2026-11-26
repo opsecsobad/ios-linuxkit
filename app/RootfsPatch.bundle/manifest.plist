@@ -60,8 +60,16 @@
 			<key>src</key>
 			<string>files/usr/local/bin/fetch</string>
 		</dict>
+		<dict>
+			<key>dst</key>
+			<string>/etc/tmux.conf</string>
+			<key>mode</key>
+			<string>0644</string>
+			<key>src</key>
+			<string>files/etc/tmux.conf</string>
+		</dict>
 	</array>
 	<key>version</key>
-	<integer>6</integer>
+	<integer>7</integer>
 </dict>
 </plist>

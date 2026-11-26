@@ -32,6 +32,7 @@ run curl        'curl -sS -o /dev/null -w "%{http_code}\n" https://deb.debian.or
 run apt-update  'apt-get update'
 run apt-install 'apt-get install -y sl && /usr/games/sl -h >/dev/null 2>&1; dpkg -s sl | head -2'
 run fetch       'fetch --version && grep -q larp /etc/passwd && test -x /usr/local/bin/linuxkit-login'
+run tmux        'tmux new-session -d -s smoke "sleep 30" && tmux new-window -t smoke "sleep 30" && tmux list-windows -t smoke && tmux kill-server'
 run nmap        'nmap --unprivileged -sT -Pn -p 22,80,443 scanme.nmap.org'
 T=1800 run claude-code 'curl -fsSL https://claude.ai/install.sh | bash && ~/.local/bin/claude --version'
 cat smoke-results.txt

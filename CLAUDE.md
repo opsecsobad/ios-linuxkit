@@ -25,6 +25,12 @@ git, ssh) and, ideally, the Claude Code CLI.
   for every change. `setup.sh` copies the same tree into fresh rootfs builds, so it is the single
   source for `linuxkit-login`, `/etc/profile.d/linuxkit.sh`, apt cache config. `fetch` (areofyl/fetch,
   pinned commit in `setup.sh`) is compiled in the rootfs job and injected into the bundle by CI.
+- Scrolling: swipes scroll xterm's scrollback, except in full-screen/mouse-mode apps (Claude Code,
+  less, tmux) where `sendWheel` dispatches wheel events (with `disableStdin` briefly lifted) so
+  xterm encodes mouse-wheel reports / arrow keys. Selection: iOS-style handles in the same file.
+- Files: app Documents is bind-mounted at `/mnt/iPhone` (`iosfs_init` in `app/iOSFS.m`), visible in
+  Files → On My iPhone → LinuxKit; `~/iPhone` symlink from `linuxkit-login`. Settings → Mounts adds
+  any Files folder under `/mnt/<name>`. Multiple shells: tmux (`/etc/tmux.conf` from the overlay).
 - App QoL defaults: screen stays awake (`shouldDisableDimming` default YES), Fira Code Nerd Font,
   Ctrl+/Ctrl- font size, Ctrl+0 reset (`adjustFontSizeBy:`/`resetFontSize` in `app/TerminalView.m`), long-press menu "Copy All",
   background keep-alive via coarse location updates (`BackgroundKeepAlive` in `app/AppDelegate.m`),

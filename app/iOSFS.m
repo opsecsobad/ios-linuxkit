@@ -248,6 +248,21 @@ void iosfs_init(void) {
     mount_from_bookmarks = false;
     sync_bookmarks();
     apply_external_folder_mounts();
+
+    // Debian edition: share the app's Documents folder (Files app →
+    // On My iPhone → LinuxKit) with Debian at /mnt/iPhone (~/iPhone links to
+    // it). Drop files there from the Files app to use them in Linux.
+    NSURL *documents = [NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory
+                                                           inDomains:NSUserDomainMask].firstObject;
+    if (documents != nil) {
+        [NSFileManager.defaultManager createDirectoryAtURL:documents
+                               withIntermediateDirectories:YES
+                                                attributes:nil
+                                                     error:nil];
+        int err = fakefs_bind_mount("/mnt/iPhone", documents.path.fileSystemRepresentation, false);
+        if (err < 0)
+            NSLog(@"[iPhone folder] bind mount failed: %d", err);
+    }
 }
 
 void iosfs_clear_all_bookmarks(void) {

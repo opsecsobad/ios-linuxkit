@@ -525,6 +525,40 @@
             native.showMenu([edge.x, edge.y + edge.height]);
     }
 
+    // Full-screen apps (Claude Code, vim, less, htop, tmux) draw on the
+    // alternate screen and/or enable mouse reporting, so there is no xterm
+    // scrollback to move. Hand swipes to them as mouse-wheel events instead;
+    // xterm.js encodes those as mouse reports or arrow keys as appropriate.
+    function appHandlesScrolling() {
+        return term.buffer.active.type === 'alternate' ||
+            (term.modes?.mouseTrackingMode && term.modes.mouseTrackingMode !== 'none');
+    }
+
+    function sendWheel(lines, x, y, cellHeight) {
+        const target = term.element?.querySelector('.xterm-screen') || term.element;
+        if (!target)
+            return;
+        // Keyboard input reaches the guest natively, so the bridge runs xterm
+        // with disableStdin, which also drops the wheel reports xterm encodes.
+        // Lift it just while dispatching; one line-mode event per line.
+        const stdinWasDisabled = term.options.disableStdin;
+        term.options.disableStdin = false;
+        try {
+            for (let i = 0; i < Math.abs(lines); i++) {
+                target.dispatchEvent(new WheelEvent('wheel', {
+                    deltaY: Math.sign(lines),
+                    deltaMode: WheelEvent.DOM_DELTA_LINE,
+                    clientX: x,
+                    clientY: y,
+                    bubbles: true,
+                    cancelable: true,
+                }));
+            }
+        } finally {
+            term.options.disableStdin = stdinWasDisabled;
+        }
+    }
+
     function installFocusBridge() {
         // touchstart is cancelled (to keep WebKit from selecting/zooming),
         // which also stops UIKit's pan from scrolling the native scroll view.
@@ -549,8 +583,12 @@
             if (lines !== 0) {
                 touchScroll.acc -= lines * cellHeight;
                 touchScroll.moved = true;
-                term.scrollLines(lines);
-                scheduleScrollSync();
+                if (appHandlesScrolling())
+                    sendWheel(lines, event.touches[0].clientX, y, cellHeight);
+                else {
+                    term.scrollLines(lines);
+                    scheduleScrollSync();
+                }
             }
             event.preventDefault();
         }, {capture: true, passive: false});

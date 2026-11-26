@@ -33,7 +33,7 @@ apt-get update
 apt-get install -y \
     bash bash-completion ca-certificates curl wget git nano less file \
     unzip xz-utils procps psmisc iproute2 iputils-ping netcat-openbsd \
-    bind9-dnsutils nmap openssh-client python3 htop busybox tini
+    bind9-dnsutils nmap openssh-client python3 htop busybox tini tmux
 
 # --- PID 1 ---------------------------------------------------------------
 # ios-linuxkit boots /sbin/init and parents every terminal to it, so init must

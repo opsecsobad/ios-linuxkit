@@ -9,6 +9,8 @@ if [ ! -d "$HOME" ]; then
     cp -a /root/. "$HOME"/ 2>/dev/null
 fi
 cd "$HOME" 2>/dev/null || cd /
+# ~/iPhone -> the app's folder in the Files app (On My iPhone > LinuxKit).
+[ -e "$HOME/iPhone" ] || [ ! -d /mnt/iPhone ] || ln -s /mnt/iPhone "$HOME/iPhone"
 # Startup fetch; any key stops it and is passed on to the shell.
 # Disable with: touch ~/.hushlogin
 if [ -t 1 ] && [ -x /usr/local/bin/fetch ] && [ ! -e "$HOME/.hushlogin" ]; then
