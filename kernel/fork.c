@@ -256,7 +256,7 @@ dword_t sys_clone3(addr_t args_addr, size_t size) {
     STRACE("clone3(%#llx, %llu)", (unsigned long long)args_addr, (unsigned long long)size);
 
     if (size < offsetof(struct clone_args_, exit_signal) + sizeof(qword_t))
-        return _EINVAL;
+        return _ENOSYS;
     if (size > sizeof(struct clone_args_))
         size = sizeof(struct clone_args_);
 
@@ -264,10 +264,23 @@ dword_t sys_clone3(addr_t args_addr, size_t size) {
     if (user_read(args_addr, &args, size))
         return _EFAULT;
 
+    STRACE(" flags=%#llx pidfd=%#llx ctid=%#llx ptid=%#llx exit_signal=%#llx stack=%#llx stack_size=%#llx tls=%#llx set_tid=%#llx/%llu cgroup=%#llx",
+           (unsigned long long) args.flags, (unsigned long long) args.pidfd,
+           (unsigned long long) args.child_tid, (unsigned long long) args.parent_tid,
+           (unsigned long long) args.exit_signal, (unsigned long long) args.stack,
+           (unsigned long long) args.stack_size, (unsigned long long) args.tls,
+           (unsigned long long) args.set_tid, (unsigned long long) args.set_tid_size,
+           (unsigned long long) args.cgroup);
+
+    // Anything clone() cannot express is reported as ENOSYS rather than
+    // EINVAL: glibc (Debian) only falls back to clone() on ENOSYS, and a
+    // failed clone3 otherwise makes every pthread_create fail.
     if (args.pidfd != 0 || args.set_tid != 0 || args.set_tid_size != 0 || args.cgroup != 0)
-        return _EINVAL;
+        return _ENOSYS;
     if (args.exit_signal & ~0xffULL)
-        return _EINVAL;
+        return _ENOSYS;
+    if (args.flags >> 32)
+        return _ENOSYS;
 
     addr_t stack = (addr_t) args.stack;
     if (args.stack_size != 0)

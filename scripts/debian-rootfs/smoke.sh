@@ -9,7 +9,7 @@ run() {
     local name=$1; shift
     echo "::group::$name"
     echo "\$ $*"
-    timeout 600 "$ish" -f "$fs" /usr/bin/env -i HOME=/root TERM=dumb \
+    timeout "${T:-600}" "$ish" -f "$fs" /usr/bin/env -i HOME=/root TERM=dumb \
         PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
         /bin/bash -c "$*"
     local rc=$?
@@ -17,9 +17,9 @@ run() {
     echo "RESULT $name rc=$rc" | tee -a smoke-results.txt
     if [ $rc -ne 0 ] && [ -n "$strace_ish" ]; then
         echo "--- strace rerun of $name ---" > "strace-$name.log"
-        timeout 600 "$strace_ish" -f "$fs" /usr/bin/env -i HOME=/root TERM=dumb \
+        timeout "${T:-600}" "$strace_ish" -f "$fs" /usr/bin/env -i HOME=/root TERM=dumb \
             PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-            /bin/bash -c "$*" >> "strace-$name.log" 2>&1
+            /bin/bash -c "$*" 2>&1 | tail -c 20000000 >> "strace-$name.log"
         tail -n 60 "strace-$name.log"
     fi
 }
@@ -32,4 +32,5 @@ run curl        'curl -sS -o /dev/null -w "%{http_code}\n" https://deb.debian.or
 run apt-update  'apt-get update'
 run apt-install 'apt-get install -y sl && /usr/games/sl -h >/dev/null 2>&1; dpkg -s sl | head -2'
 run nmap        'nmap --unprivileged -sT -Pn -p 22,80,443 scanme.nmap.org'
+T=1800 run claude-code 'curl -fsSL https://claude.ai/install.sh | bash && ~/.local/bin/claude --version'
 cat smoke-results.txt

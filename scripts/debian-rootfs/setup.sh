@@ -14,6 +14,14 @@ Acquire::Retries "3";
 Acquire::Languages "none";
 EOF
 echo 'force-unsafe-io' > /etc/dpkg/dpkg.cfg.d/99linuxkit
+# The Docker image stores package lists lz4-compressed; lz4 decompression
+# returns corrupt data under the emulator ("Problem with MergeList ...lz4"),
+# so keep indexes uncompressed and download them as xz/gz.
+rm -f /etc/apt/apt.conf.d/docker-gzip-indexes
+cat > /etc/apt/apt.conf.d/98linuxkit-indexes <<'EOF'
+Acquire::GzipIndexes "false";
+Acquire::CompressionTypes::Order { "xz"; "gz"; };
+EOF
 
 apt-get update
 apt-get install -y \
