@@ -33,7 +33,7 @@ struct rowcol {
 }
 @end
 
-@interface TerminalView () <UIEditMenuInteractionDelegate>
+@interface TerminalView () <UIEditMenuInteractionDelegate, UIGestureRecognizerDelegate>
 
 @property (nonatomic) NSMutableArray<UIKeyCommand *> *keyCommands;
 @property ScrollbarView *scrollbarView;
@@ -74,6 +74,9 @@ struct rowcol {
     // on top of that would double-scroll. The view still shows the indicator.
     scrollbarView.panGestureRecognizer.enabled = NO;
     UILongPressGestureRecognizer *selectionGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(selectTerminalText:)];
+    // WKWebView has its own long-press/touch recognizers; without this they
+    // can keep ours from firing, so long-press selection never started.
+    selectionGesture.delegate = self;
     [self addGestureRecognizer:selectionGesture];
     if (@available(iOS 16.0, *)) {
         self.terminalEditMenu = [[UIEditMenuInteraction alloc] initWithDelegate:self];
@@ -382,6 +385,8 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
             return [self adjustFontSizeBy:+1];
         if ([text isEqualToString:@"-"])
             return [self adjustFontSizeBy:-1];
+        if ([text isEqualToString:@"0"])
+            return [self resetFontSize];
         if (text.length == 1)
             return [self insertControlChar:[text characterAtIndex:0]];
     }
@@ -398,6 +403,13 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
     size = MAX(6, MIN(40, size));
     self.overrideFontSize = 0;
     UserPreferences.shared.fontSize = @(size);
+}
+
+// Ctrl 0: back to the default text size.
+- (void)resetFontSize {
+    NSNumber *defaultSize = [[[NSUserDefaults alloc] initWithSuiteName:NSRegistrationDomain] objectForKey:@"Font Size"];
+    self.overrideFontSize = 0;
+    UserPreferences.shared.fontSize = [defaultSize isKindOfClass:NSNumber.class] ? defaultSize : @(12);
 }
 
 - (void)insertControlChar:(char)ch {
@@ -490,6 +502,10 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
 
 - (void)selectAll:(id)sender {
     [self.terminal.webView evaluateJavaScript:@"exports.selectAll?.()" completionHandler:nil];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return [gestureRecognizer isKindOfClass:UILongPressGestureRecognizer.class] && gestureRecognizer.view == self;
 }
 
 - (void)selectTerminalText:(UILongPressGestureRecognizer *)gesture {
@@ -631,6 +647,8 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
             return [self adjustFontSizeBy:+1];
         if ([key isEqualToString:@"-"])
             return [self adjustFontSizeBy:-1];
+        if ([key isEqualToString:@"0"])
+            return [self resetFontSize];
         if ([key isEqualToString:@"2"])
             key = @"@";
         else if ([key isEqualToString:@"6"])
@@ -650,6 +668,7 @@ static const char *metaKeys = "abcdefghijklmnopqrstuvwxyz0123456789-=[]\\;',./";
         return _keyCommands;
     _keyCommands = [NSMutableArray new];
     [self addKeys:controlKeys withModifiers:UIKeyModifierControl];
+    [self addKey:@"0" withModifiers:UIKeyModifierControl]; // reset text size
     for (NSString *specialKey in @[UIKeyInputEscape, UIKeyInputUpArrow, UIKeyInputDownArrow,
                                    UIKeyInputLeftArrow, UIKeyInputRightArrow, @"\t"]) {
         [self addKey:specialKey withModifiers:0];

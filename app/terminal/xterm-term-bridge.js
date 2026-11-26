@@ -335,7 +335,8 @@
         let touchScroll = null;
         terminalElement.addEventListener('touchstart', (event) => {
             touchScroll = event.touches.length === 1
-                ? {y: event.touches[0].clientY, acc: 0, moved: false}
+                ? {y: event.touches[0].clientY, acc: 0, moved: false,
+                   hadSelection: term.hasSelection()}
                 : null;
             if (!term.hasSelection())
                 event.preventDefault();
@@ -358,9 +359,15 @@
         }, {capture: true, passive: false});
         terminalElement.addEventListener('touchend', (event) => {
             const scrolled = touchScroll?.moved;
+            // A tap dismisses a selection that existed before it. A selection
+            // made during this touch (long-press) must survive the finger lift,
+            // or the Copy menu has nothing to copy.
+            const dismissSelection = touchScroll?.hadSelection;
             touchScroll = null;
-            if (term.hasSelection())
+            if (dismissSelection && term.hasSelection()) {
+                selectionAnchor = null;
                 term.clearSelection();
+            }
             event.preventDefault();
             event.stopImmediatePropagation();
             if (!scrolled)

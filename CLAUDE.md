@@ -26,7 +26,7 @@ git, ssh) and, ideally, the Claude Code CLI.
   source for `linuxkit-login`, `/etc/profile.d/linuxkit.sh`, apt cache config. `fetch` (areofyl/fetch,
   pinned commit in `setup.sh`) is compiled in the rootfs job and injected into the bundle by CI.
 - App QoL defaults: screen stays awake (`shouldDisableDimming` default YES), Fira Code Nerd Font,
-  Ctrl+/Ctrl- font size (`adjustFontSizeBy:` in `app/TerminalView.m`), long-press menu "Copy All",
+  Ctrl+/Ctrl- font size, Ctrl+0 reset (`adjustFontSizeBy:`/`resetFontSize` in `app/TerminalView.m`), long-press menu "Copy All",
   background keep-alive via coarse location updates (`BackgroundKeepAlive` in `app/AppDelegate.m`),
   accessory-bar overlap fix (`updateAccessoryBarOverlap` in `app/TerminalViewController.m`).
 - Storage: `ContainerURL()` in `app/AppGroup.m` falls back to Application Support when the
