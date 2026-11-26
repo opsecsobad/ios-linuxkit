@@ -64,6 +64,8 @@ chmod 755 /usr/local/bin/linuxkit-login
 
 cat > /etc/profile.d/linuxkit.sh <<'EOF'
 # ios-linuxkit Debian edition
+# User-installed tools (Claude Code's native installer, pipx, ...).
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
 # iOS forbids raw sockets for every app, so nmap must use connect() scans.
 alias nmap='nmap --unprivileged'
 if [ -n "$PS1" ] && [ -z "$LINUXKIT_WELCOMED" ]; then
