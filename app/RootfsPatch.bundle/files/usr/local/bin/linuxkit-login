@@ -1,0 +1,17 @@
+#!/bin/sh
+# Terminal session entry point for the ios-linuxkit Debian edition.
+# Shipped by the app's rootfs overlay: app updates overwrite local edits.
+export HOME=/home/larp USER=root LOGNAME=root SHELL=/bin/bash LANG=C.UTF-8
+if [ ! -d "$HOME" ]; then
+    # First start after home moved from /root: bring dotfiles and tools along
+    # (Claude Code login, ~/.local, shell config).
+    mkdir -p "$HOME"
+    cp -a /root/. "$HOME"/ 2>/dev/null
+fi
+cd "$HOME" 2>/dev/null || cd /
+# Startup fetch; any key stops it and is passed on to the shell.
+# Disable with: touch ~/.hushlogin
+if [ -t 1 ] && [ -x /usr/local/bin/fetch ] && [ ! -e "$HOME/.hushlogin" ]; then
+    /usr/local/bin/fetch
+fi
+exec /bin/bash -l

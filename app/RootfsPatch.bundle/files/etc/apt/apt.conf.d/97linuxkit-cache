@@ -1,0 +1,6 @@
+// The emulator's mremap() cannot grow apt's cache map ("Dynamic MMap ran out
+// of room" -> "Problem with MergeList"). Reserve enough up front that it never
+// has to grow; guest address space is reserved lazily, so this is cheap.
+APT::Cache-Start "268435456";
+APT::Cache-Grow "0";
+APT::Cache-Limit "536870912";

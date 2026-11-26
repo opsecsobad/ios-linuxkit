@@ -378,6 +378,10 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
     if (self.controlKey.selected) {
         if (!self.controlKey.highlighted)
             self.controlKey.selected = NO;
+        if ([text isEqualToString:@"+"] || [text isEqualToString:@"="])
+            return [self adjustFontSizeBy:+1];
+        if ([text isEqualToString:@"-"])
+            return [self adjustFontSizeBy:-1];
         if (text.length == 1)
             return [self insertControlChar:[text characterAtIndex:0]];
     }
@@ -385,6 +389,15 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
     text = [text stringByReplacingOccurrencesOfString:@"\n" withString:@"\r"];
     NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding];
     [self.terminal sendInput:data];
+}
+
+// Ctrl + / Ctrl - (on-screen Ctrl key or a hardware keyboard) change the
+// terminal text size and remember it.
+- (void)adjustFontSizeBy:(int)delta {
+    double size = self.effectiveFontSize + delta;
+    size = MAX(6, MIN(40, size));
+    self.overrideFontSize = 0;
+    UserPreferences.shared.fontSize = @(size);
 }
 
 - (void)insertControlChar:(char)ch {
@@ -468,6 +481,13 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
     return [super canPerformAction:action withSender:sender];
 }
 
+- (void)copyAllText {
+    [self.terminal.webView evaluateJavaScript:@"exports.getAllText?.()" completionHandler:^(id result, NSError *error) {
+        if ([result isKindOfClass:NSString.class])
+            UIPasteboard.generalPasteboard.string = result;
+    }];
+}
+
 - (void)selectAll:(id)sender {
     [self.terminal.webView evaluateJavaScript:@"exports.selectAll?.()" completionHandler:nil];
 }
@@ -499,7 +519,8 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
     __weak TerminalView *view = self;
     UIAction *copy = [UIAction actionWithTitle:@"Copy" image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(UIAction *action) { [view copy:nil]; }];
     UIAction *selectAll = [UIAction actionWithTitle:@"Select All" image:nil identifier:nil handler:^(UIAction *action) { [view selectAll:nil]; }];
-    return [UIMenu menuWithChildren:@[copy, selectAll]];
+    UIAction *copyAll = [UIAction actionWithTitle:@"Copy All" image:[UIImage systemImageNamed:@"doc.on.clipboard"] identifier:nil handler:^(UIAction *action) { [view copyAllText]; }];
+    return [UIMenu menuWithChildren:@[copy, copyAll, selectAll]];
 }
 
 - (void)clearScrollback:(UIKeyCommand *)command {
@@ -606,6 +627,10 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
     } else if (command.modifierFlags & UIKeyModifierControl || command.modifierFlags & UIKeyModifierAlphaShift) {
         if (key.length == 0)
             return;
+        if ([key isEqualToString:@"="] || [key isEqualToString:@"+"])
+            return [self adjustFontSizeBy:+1];
+        if ([key isEqualToString:@"-"])
+            return [self adjustFontSizeBy:-1];
         if ([key isEqualToString:@"2"])
             key = @"@";
         else if ([key isEqualToString:@"6"])

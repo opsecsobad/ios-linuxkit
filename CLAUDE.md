@@ -17,8 +17,18 @@ git, ssh) and, ideally, the Claude Code CLI.
   `scripts/debian-rootfs/build.sh` (docker export → `debian-arm64-rootfs.tar.gz`). The tarball is
   bundled as `LinuxKit.app/root.tar.gz` by `app/download-root.sh` (`ROOTFS_FILE` + `ROOTFS_SHA256`).
 - Boot: `/sbin/init` = busybox init with a one-line `/etc/inittab`. Each terminal runs
-  `/usr/local/bin/linuxkit-login` (sets HOME/USER, `exec bash -l`) — default set in
+  `/usr/local/bin/linuxkit-login` (HOME=/home/larp, runs `fetch`, `exec bash -l`) — default set in
   `app/UserPreferences.m`. Debian's `/bin/login` is not used (PAM/loginuid don't work here).
+- **Rootfs overlay = how changes reach existing installs.** Files in `app/RootfsPatch.bundle/files`
+  listed in `manifest.plist` (optional octal `mode`) are written into the user's existing Debian on
+  launch whenever `version` increases (`FsApplyOverlay` in `app/CurrentRoot.m`). Bump `version`
+  for every change. `setup.sh` copies the same tree into fresh rootfs builds, so it is the single
+  source for `linuxkit-login`, `/etc/profile.d/linuxkit.sh`, apt cache config. `fetch` (areofyl/fetch,
+  pinned commit in `setup.sh`) is compiled in the rootfs job and injected into the bundle by CI.
+- App QoL defaults: screen stays awake (`shouldDisableDimming` default YES), Fira Code Nerd Font,
+  Ctrl+/Ctrl- font size (`adjustFontSizeBy:` in `app/TerminalView.m`), long-press menu "Copy All",
+  background keep-alive via coarse location updates (`BackgroundKeepAlive` in `app/AppDelegate.m`),
+  accessory-bar overlap fix (`updateAccessoryBarOverlap` in `app/TerminalViewController.m`).
 - Storage: `ContainerURL()` in `app/AppGroup.m` falls back to Application Support when the
   app-group container is missing (SideStore signs without the app-group entitlement).
 - Terminal UI: `app/Terminal.m` hosts xterm.js in a WKWebView (`app/terminal/xterm-term*.{html,js}`).

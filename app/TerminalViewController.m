@@ -24,6 +24,7 @@
 @property UITapGestureRecognizer *tapRecognizer;
 @property (weak, nonatomic) IBOutlet TerminalView *termView;
 @property (weak, nonatomic) IBOutlet NSLayoutConstraint *bottomConstraint;
+@property (nonatomic) NSLayoutConstraint *keyboardGuideConstraint;
 
 @property (weak, nonatomic) IBOutlet UIButton *tabKey;
 @property (weak, nonatomic) IBOutlet UIButton *controlKey;
@@ -59,7 +60,8 @@
 
     if (@available(iOS 15.0, *)) {
         self.bottomConstraint.active = NO;
-        [self.termView.bottomAnchor constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor].active = YES;
+        self.keyboardGuideConstraint = [self.termView.bottomAnchor constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor];
+        self.keyboardGuideConstraint.active = YES;
     }
 
 #if !ISH_LINUX
@@ -338,8 +340,12 @@
     CGRect intersection = CGRectIntersection(keyboardFrame, self.view.bounds);
     BOOL intersects = !CGRectIsNull(intersection) && !CGRectIsEmpty(intersection);
     self.hasExternalKeyboard = !intersects || intersection.size.height < 100;
-    if (@available(iOS 15.0, *))
-        return; // UIKit's layout guide handles keyboard movement and safe areas.
+    if (@available(iOS 15.0, *)) {
+        // UIKit's layout guide handles keyboard movement and safe areas, except
+        // that the floating accessory bar is not always part of it.
+        dispatch_async(dispatch_get_main_queue(), ^{ [self updateAccessoryBarOverlap]; });
+        return;
+    }
 
     keyboardFrame = intersects ? intersection : CGRectZero;
     CGFloat pad = self.view.safeAreaInsets.bottom;
@@ -369,6 +375,33 @@
                          }
                          completion:nil];
     }
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self updateAccessoryBarOverlap];
+}
+
+// On recent iOS the input accessory bar (Tab/Ctrl/arrows) floats above the
+// keyboard without being included in keyboardLayoutGuide, so the last 2-3
+// terminal rows were drawn underneath it. Measure the bar on screen and lift
+// the terminal's bottom edge above it.
+- (void)updateAccessoryBarOverlap {
+    if (self.keyboardGuideConstraint == nil)
+        return;
+    CGFloat lift = 0;
+    UIView *bar = self.termView.inputAccessoryView;
+    if (@available(iOS 15.0, *)) {
+        if (bar != nil && bar.window != nil && !bar.hidden && bar.alpha > 0.01 && self.view.window != nil) {
+            CGRect barInView = [self.view convertRect:bar.bounds fromCoordinateSpace:bar];
+            CGFloat guideTop = CGRectGetMinY(self.view.keyboardLayoutGuide.layoutFrame);
+            CGFloat barTop = CGRectGetMinY(barInView);
+            if (barTop < guideTop && guideTop - barTop < self.view.bounds.size.height / 2)
+                lift = guideTop - barTop;
+        }
+    }
+    if (fabs(self.keyboardGuideConstraint.constant + lift) > 0.5)
+        self.keyboardGuideConstraint.constant = -lift;
 }
 
 - (void)setHasExternalKeyboard:(BOOL)hasExternalKeyboard {

@@ -28,8 +28,40 @@
 			<key>src</key>
 			<string>files/etc/resolv.conf</string>
 		</dict>
+		<dict>
+			<key>dst</key>
+			<string>/usr/local/bin/linuxkit-login</string>
+			<key>mode</key>
+			<string>0755</string>
+			<key>src</key>
+			<string>files/usr/local/bin/linuxkit-login</string>
+		</dict>
+		<dict>
+			<key>dst</key>
+			<string>/etc/profile.d/linuxkit.sh</string>
+			<key>mode</key>
+			<string>0644</string>
+			<key>src</key>
+			<string>files/etc/profile.d/linuxkit.sh</string>
+		</dict>
+		<dict>
+			<key>dst</key>
+			<string>/etc/apt/apt.conf.d/97linuxkit-cache</string>
+			<key>mode</key>
+			<string>0644</string>
+			<key>src</key>
+			<string>files/etc/apt/apt.conf.d/97linuxkit-cache</string>
+		</dict>
+		<dict>
+			<key>dst</key>
+			<string>/usr/local/bin/fetch</string>
+			<key>mode</key>
+			<string>0755</string>
+			<key>src</key>
+			<string>files/usr/local/bin/fetch</string>
+		</dict>
 	</array>
 	<key>version</key>
-	<integer>5</integer>
+	<integer>6</integer>
 </dict>
 </plist>

@@ -192,6 +192,16 @@ void FsApplyOverlay(void) {
         } else {
             NSLog(@"[RootfsPatch] OK %@ -> %@ (%lu bytes)", src, dst, (unsigned long)data.length);
             applied++;
+#if !ISH_LINUX
+            // Optional octal "mode" (e.g. "0755") so the overlay can ship
+            // executables; new files are otherwise created 0644.
+            NSString *mode = entry[@"mode"];
+            if ([mode isKindOfClass:NSString.class] && mode.length > 0) {
+                unsigned long bits = strtoul(mode.UTF8String, NULL, 8) & 07777;
+                generic_setattrat(AT_PWD, dst.UTF8String,
+                                  (struct attr) {.type = attr_mode, .mode = (mode_t_) bits}, false);
+            }
+#endif
         }
     }
 

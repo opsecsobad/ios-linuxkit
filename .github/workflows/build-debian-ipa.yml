@@ -31,7 +31,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: debian-rootfs
-          path: out/debian-arm64-rootfs.tar.gz
+          path: |
+            out/debian-arm64-rootfs.tar.gz
+            out/fetch
           retention-days: 14
           compression-level: 0
 
@@ -52,6 +54,11 @@ jobs:
         with:
           name: debian-rootfs
           path: ${{ runner.temp }}/rootfs
+
+      - name: Add fetch to the rootfs overlay
+        run: |
+          install -m 755 "$RUNNER_TEMP/rootfs/fetch" app/RootfsPatch.bundle/files/usr/local/bin/fetch
+          file app/RootfsPatch.bundle/files/usr/local/bin/fetch
 
       - name: Show toolchain
         run: |

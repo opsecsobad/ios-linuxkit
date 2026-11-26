@@ -228,6 +228,24 @@
             term.select(start % term.cols, Math.floor(start / term.cols), Math.abs(a - b) + 1);
         },
         selectAll() { term.selectAll(); },
+        // Whole buffer (scrollback + screen) as text; soft-wrapped rows joined.
+        getAllText() {
+            const buffer = term.buffer.active;
+            const lines = [];
+            for (let i = 0; i < buffer.length; i++) {
+                const line = buffer.getLine(i);
+                if (!line)
+                    continue;
+                const text = line.translateToString(true);
+                if (line.isWrapped && lines.length)
+                    lines[lines.length - 1] += text;
+                else
+                    lines.push(text);
+            }
+            while (lines.length && lines[lines.length - 1] === '')
+                lines.pop();
+            return lines.join('\n');
+        },
         clearSelection() { selectionAnchor = null; term.clearSelection(); },
         setFocused(focused) {
             terminalElement.classList.toggle('terminal-focused', !!focused);

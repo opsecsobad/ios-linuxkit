@@ -47,6 +47,67 @@ extern void native_builtins_init(void);
 #import "LinuxInterop.h"
 #endif
 
+#import <CoreLocation/CoreLocation.h>
+
+// Debian edition: iOS suspends (and later kills) background apps, which
+// restarted every shell. Apps with the "location" background mode keep running
+// while they receive location updates, so request coarse (cell/Wi-Fi, ~3 km)
+// updates for the app's lifetime. iOS shows a location indicator meanwhile.
+@interface BackgroundKeepAlive : NSObject <CLLocationManagerDelegate>
+@property (nonatomic) CLLocationManager *manager;
++ (instancetype)shared;
+- (void)start;
+@end
+
+@implementation BackgroundKeepAlive
+
++ (instancetype)shared {
+    static BackgroundKeepAlive *shared;
+    static dispatch_once_t token;
+    dispatch_once(&token, ^{ shared = [BackgroundKeepAlive new]; });
+    return shared;
+}
+
+- (void)start {
+    if (self.manager == nil) {
+        self.manager = [CLLocationManager new];
+        self.manager.delegate = self;
+        self.manager.desiredAccuracy = kCLLocationAccuracyThreeKilometers;
+        self.manager.distanceFilter = kCLDistanceFilterNone;
+        self.manager.pausesLocationUpdatesAutomatically = NO;
+        self.manager.activityType = CLActivityTypeOther;
+    }
+    CLAuthorizationStatus status = self.manager.authorizationStatus;
+    if (status == kCLAuthorizationStatusNotDetermined) {
+        [self.manager requestWhenInUseAuthorization];
+        return; // continues in locationManagerDidChangeAuthorization:
+    }
+    if (status != kCLAuthorizationStatusAuthorizedWhenInUse &&
+        status != kCLAuthorizationStatusAuthorizedAlways) {
+        NSLog(@"[KeepAlive] location not authorized (%d); app will be suspended in background", (int) status);
+        return;
+    }
+    self.manager.allowsBackgroundLocationUpdates = YES;
+    self.manager.showsBackgroundLocationIndicator = YES;
+    [self.manager startUpdatingLocation];
+    NSLog(@"[KeepAlive] background location keep-alive running");
+}
+
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager {
+    if (manager.authorizationStatus != kCLAuthorizationStatusNotDetermined)
+        [self start];
+}
+
+- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
+    // Only needed to keep the process alive; the data is discarded.
+}
+
+- (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error {
+    NSLog(@"[KeepAlive] location error %@", error);
+}
+
+@end
+
 @interface AppDelegate ()
 
 @property BOOL exiting;
@@ -356,6 +417,10 @@ void NetworkReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     // get the network permissions popup to appear on chinese devices
     [[NSURLSession.sharedSession dataTaskWithURL:[NSURL URLWithString:@"http://captive.apple.com"]] resume];
+
+#if !ISH_LINUX
+    [BackgroundKeepAlive.shared start];
+#endif
 
     if ([NSUserDefaults.standardUserDefaults boolForKey:@"FASTLANE_SNAPSHOT"])
         [UIView setAnimationsEnabled:NO];

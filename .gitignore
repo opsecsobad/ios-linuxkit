@@ -27,3 +27,4 @@ e2e_out/
 
 # Legacy bench scripts (replaced by benchmark/)
 bench/
+/app/RootfsPatch.bundle/files/usr/local/bin/fetch

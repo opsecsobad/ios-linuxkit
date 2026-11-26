@@ -4,6 +4,13 @@
 set -euxo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
+# --- App overlay files -----------------------------------------------------
+# app/RootfsPatch.bundle/files is mounted at /linuxkit-overlay. The app also
+# writes these into existing installs on update, so this is the single source
+# for linuxkit-login, /etc/profile.d/linuxkit.sh, apt cache settings, ...
+tar -C /linuxkit-overlay -cf - . | tar -C / -xf - --keep-directory-symlink --no-same-owner
+chmod 755 /usr/local/bin/linuxkit-login
+
 # --- apt/dpkg tuning for the emulator ------------------------------------
 # Download as root (no privilege drop to _apt), no fsync storms, no recommends.
 cat > /etc/apt/apt.conf.d/99linuxkit <<'EOF'
@@ -12,12 +19,6 @@ APT::Install-Recommends "false";
 APT::Install-Suggests "false";
 Acquire::Retries "3";
 Acquire::Languages "none";
-// The emulator's mremap() cannot grow apt's cache map ("Dynamic MMap ran out
-// of room" -> "Problem with MergeList"). Reserve enough up front that it never
-// has to grow; guest address space is reserved lazily, so this is cheap.
-APT::Cache-Start "268435456";
-APT::Cache-Grow "0";
-APT::Cache-Limit "536870912";
 EOF
 echo 'force-unsafe-io' > /etc/dpkg/dpkg.cfg.d/99linuxkit
 # Keep indexes uncompressed (plain text) to avoid a decompression step on
@@ -50,33 +51,26 @@ EOF
     chmod 755 /usr/sbin/init
 fi
 
-# --- Terminal session entry point ------------------------------------------
-# The app starts each terminal with only TERM set. Debian's /bin/login needs
-# PAM/loginuid, which the emulator does not provide, so log in by hand.
-cat > /usr/local/bin/linuxkit-login <<'EOF'
-#!/bin/sh
-export HOME=/root USER=root LOGNAME=root SHELL=/bin/bash
-export LANG=C.UTF-8
-cd "$HOME" 2>/dev/null || cd /
-exec /bin/bash -l
-EOF
-chmod 755 /usr/local/bin/linuxkit-login
+# --- fetch (areofyl/fetch, AUR fetch-git) -----------------------------------
+# Animated 3D distro-logo fetch shown when a terminal starts (linuxkit-login).
+FETCH_COMMIT=ce8b8dcdc62cfe552d0b810887504995daffe870
+apt-get install -y gcc make libc6-dev
+git clone https://github.com/areofyl/fetch.git /tmp/fetch
+git -C /tmp/fetch checkout "$FETCH_COMMIT"
+make -C /tmp/fetch PREFIX=/usr/local install
+apt-get purge -y --auto-remove gcc make libc6-dev
+rm -rf /tmp/fetch
+/usr/local/bin/fetch --version
 
-cat > /etc/profile.d/linuxkit.sh <<'EOF'
-# ios-linuxkit Debian edition
-# User-installed tools (Claude Code's native installer, pipx, ...).
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
-# iOS forbids raw sockets for every app, so nmap must use connect() scans.
-alias nmap='nmap --unprivileged'
-if [ -n "$PS1" ] && [ -z "$LINUXKIT_WELCOMED" ]; then
-    export LINUXKIT_WELCOMED=1
-    echo "Debian $(cat /etc/debian_version) (arm64) on ios-linuxkit"
-    echo "Run 'apt update' before installing packages. nmap: use -sT (no raw sockets on iOS)."
-fi
-EOF
+# --- Home directory ----------------------------------------------------------
+# Shells start in /home/larp (root keeps uid 0, but this is its home).
+mkdir -p /home/larp
+cp -a /etc/skel/. /home/larp/ 2>/dev/null || true
+cp -a /root/.bashrc /root/.profile /home/larp/ 2>/dev/null || true
+usermod -d /home/larp root
 
 # Coloured prompt/ls for root.
-cat >> /root/.bashrc <<'EOF'
+cat >> /home/larp/.bashrc <<'EOF'
 export LS_OPTIONS='--color=auto'
 alias ls='ls $LS_OPTIONS'
 alias ll='ls $LS_OPTIONS -l'

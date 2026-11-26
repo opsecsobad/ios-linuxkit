@@ -13,8 +13,10 @@ name=linuxkit-rootfs-$$
 work=$(mktemp -d)
 trap 'docker rm -f "$name" >/dev/null 2>&1 || true; sudo rm -rf "$work"' EXIT
 
+overlay=$(cd "$here/../../app/RootfsPatch.bundle/files" && pwd)
 docker run --name "$name" --platform linux/arm64 \
     -v "$here/setup.sh:/linuxkit-setup.sh:ro" \
+    -v "$overlay:/linuxkit-overlay:ro" \
     "$image" bash /linuxkit-setup.sh
 
 mkdir -p "$work/root"
@@ -31,8 +33,11 @@ printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' \
 file -L "$work/root/usr/bin/bash" | grep -q 'ARM aarch64'
 test -x "$work/root/usr/local/bin/linuxkit-login"
 test -e "$work/root/usr/sbin/init"
+test -x "$work/root/usr/local/bin/fetch"
 
 mkdir -p "$(dirname "$out")"
+# The app bundle's rootfs overlay ships fetch to existing installs too.
+cp "$work/root/usr/local/bin/fetch" "$(dirname "$out")/fetch"
 sudo tar --numeric-owner -czf "$out" -C "$work/root" .
 sudo chown "$(id -u):$(id -g)" "$out"
 ls -lh "$out"

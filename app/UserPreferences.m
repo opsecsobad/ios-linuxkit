@@ -164,7 +164,7 @@ bool (*remove_user_default)(const char *name);
             kPreferenceBacktickEscapeKey: @(NO),
             kPreferenceHideExtraKeysWithExternalKeyboardKey: @(NO),
             kPreferenceOverrideControlSpaceKey: @(NO),
-            kPreferenceDisableDimmingKey: @(NO),
+            kPreferenceDisableDimmingKey: @(YES), // Debian edition: keep the screen on while the terminal is open
             kPreferenceLaunchCommandKey: @[@"/usr/local/bin/linuxkit-login"], // Debian edition: see scripts/debian-rootfs/setup.sh
             kPreferenceBootCommandKey: @[@"/sbin/init"],
             kPreferenceBlinkCursorKey: @(NO),
@@ -175,7 +175,7 @@ bool (*remove_user_default)(const char *name);
             kHostnameOverrideKey: UIDevice.currentDevice.name,
         }];
         [_defaults registerDefaults:@{
-            kPreferenceFontFamilyKey: kWebtermTerminalFontFamilyName,
+            kPreferenceFontFamilyKey: kFiraTerminalFontFamilyName, // Debian edition default font
         }];
         get_all_defaults_keys = get_all_defaults_keys_impl;
         get_friendly_name = get_friendly_name_impl;
