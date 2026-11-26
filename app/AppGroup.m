@@ -108,7 +108,28 @@ NSURL *ContainerURL(void) {
                                                         inDomains:NSUserDomainMask].firstObject;
     return [support URLByAppendingPathComponent:@"LinuxKitAOTBootstrap" isDirectory:YES];
 #else
-    NSString *appGroup = CurrentAppGroups()[0];
-    return [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:appGroup];
+    static NSURL *container;
+    static dispatch_once_t token;
+    dispatch_once(&token, ^{
+        NSArray<NSString *> *groups = CurrentAppGroups();
+        if (groups.count > 0)
+            container = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:groups[0]];
+        if (container == nil) {
+            // Sideloaded builds (SideStore/AltStore with a free Apple ID) may be
+            // signed without the app-group entitlement, which leaves the shared
+            // container nil and crashed launch. Fall back to the app's private
+            // Application Support directory; only the Files extension needs the
+            // shared group.
+            NSURL *support = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
+                                                                inDomains:NSUserDomainMask].firstObject;
+            container = [support URLByAppendingPathComponent:@"LinuxKit" isDirectory:YES];
+            [NSFileManager.defaultManager createDirectoryAtURL:container
+                                   withIntermediateDirectories:YES
+                                                    attributes:nil
+                                                         error:nil];
+            NSLog(@"[AppGroup] no app-group container; using %@", container.path);
+        }
+    });
+    return container;
 #endif
 }
