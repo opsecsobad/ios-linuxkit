@@ -126,6 +126,35 @@
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
 
+    // OSC 8 hyperlinks: open the real target, not the (possibly shortened or
+    // wrapped) visible text. Claude Code's login link relies on this.
+    term.options.linkHandler = {
+        activate(event, uri) {
+            if (/^https?:\/\//i.test(uri))
+                native.openLink(uri);
+        },
+        allowNonHttpProtocols: false,
+    };
+
+    // OSC 52 clipboard writes ("\e]52;c;<base64>\a") -> iOS pasteboard.
+    // Reads ("?") are refused so guest programs cannot snoop the clipboard.
+    term.parser.registerOscHandler(52, (data) => {
+        const separator = data.indexOf(';');
+        if (separator < 0)
+            return false;
+        const payload = data.slice(separator + 1);
+        if (payload === '?' || payload === '')
+            return true;
+        try {
+            const binary = atob(payload);
+            const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+            native.copyText(new TextDecoder().decode(bytes));
+        } catch (error) {
+            native.log(`OSC 52 decode failed: ${error}`);
+        }
+        return true;
+    });
+
     term.onData((data) => {
         native.sendInput(data);
         syncApplicationCursor();

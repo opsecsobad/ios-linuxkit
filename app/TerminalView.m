@@ -123,7 +123,7 @@ struct rowcol {
     }
 }
 
-static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight", @"newScrollTop", @"openLink", @"selectionChanged"};
+static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight", @"newScrollTop", @"openLink", @"selectionChanged", @"copyText"};
 
 - (void)setTerminal:(Terminal *)terminal {
     if (_terminal) {
@@ -333,6 +333,10 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
     } else if ([message.name isEqualToString:@"openLink"]) {
         if ([message.body isKindOfClass:NSString.class])
             [UIApplication openURL:message.body];
+    } else if ([message.name isEqualToString:@"copyText"]) {
+        // OSC 52 from the guest (e.g. Claude Code's login URL).
+        if ([message.body isKindOfClass:NSString.class] && [message.body length] <= 1024 * 1024)
+            UIPasteboard.generalPasteboard.string = message.body;
     } else if ([message.name isEqualToString:@"selectionChanged"]) {
         if ([message.body isKindOfClass:NSString.class])
             self.selectedText = message.body;
