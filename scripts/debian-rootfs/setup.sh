@@ -67,7 +67,9 @@ rm -rf /tmp/fetch
 mkdir -p /home/larp
 cp -a /etc/skel/. /home/larp/ 2>/dev/null || true
 cp -a /root/.bashrc /root/.profile /home/larp/ 2>/dev/null || true
-usermod -d /home/larp root
+# usermod refuses here (root is PID 1 in the build container); edit passwd.
+sed -i -E 's|^(root:[^:]*:0:0:[^:]*:)/root:|\1/home/larp:|' /etc/passwd
+grep -q '^root:[^:]*:0:0:[^:]*:/home/larp:' /etc/passwd
 
 # Coloured prompt/ls for root.
 cat >> /home/larp/.bashrc <<'EOF'
