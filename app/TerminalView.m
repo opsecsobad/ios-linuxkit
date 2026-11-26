@@ -70,6 +70,9 @@ struct rowcol {
     self.clipsToBounds = YES;
     [self addSubview:scrollbarView];
 #if USE_XTERM_RENDERER
+    // xterm-term-bridge.js scrolls the scrollback from touchmove; a native pan
+    // on top of that would double-scroll. The view still shows the indicator.
+    scrollbarView.panGestureRecognizer.enabled = NO;
     UILongPressGestureRecognizer *selectionGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(selectTerminalText:)];
     [self addGestureRecognizer:selectionGesture];
     if (@available(iOS 16.0, *)) {

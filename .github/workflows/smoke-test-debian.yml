@@ -1,0 +1,52 @@
+name: Debian edition smoke test (Linux)
+
+# Runs the Debian rootfs inside the Linux CLI build of the emulator on an arm64
+# runner. Not identical to iOS (Darwin host), but the guest syscall layer is
+# shared, so most userland failures reproduce here with a strace build.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [debian-edition]
+    paths-ignore: ['docs/**', '**.md']
+
+concurrency:
+  group: debian-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang meson ninja-build pkg-config libsqlite3-dev libarchive-dev file
+
+      - name: Build emulator (release + strace)
+        run: |
+          CC=clang meson setup build-rel -Dguest_arch=arm64 --buildtype=release
+          ninja -C build-rel
+          CC=clang meson setup build-strace -Dguest_arch=arm64 --buildtype=release -Dlog="strace"
+          ninja -C build-strace
+
+      - name: Build Debian rootfs
+        run: bash scripts/debian-rootfs/build.sh out/debian-arm64-rootfs.tar.gz
+
+      - name: Import rootfs
+        run: ./build-rel/tools/fakefsify out/debian-arm64-rootfs.tar.gz debian-fakefs
+
+      - name: Smoke test
+        run: bash scripts/debian-rootfs/smoke.sh ./build-rel/ish debian-fakefs ./build-strace/ish
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-logs
+          path: |
+            smoke-results.txt
+            strace-*.log
+          retention-days: 14

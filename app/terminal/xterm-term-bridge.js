@@ -282,16 +282,42 @@
     }
 
     function installFocusBridge() {
+        // touchstart is cancelled (to keep WebKit from selecting/zooming),
+        // which also stops UIKit's pan from scrolling the native scroll view.
+        // Scroll the scrollback from the touch stream ourselves instead.
+        let touchScroll = null;
         terminalElement.addEventListener('touchstart', (event) => {
+            touchScroll = event.touches.length === 1
+                ? {y: event.touches[0].clientY, acc: 0, moved: false}
+                : null;
             if (!term.hasSelection())
                 event.preventDefault();
         }, {capture: true});
+        terminalElement.addEventListener('touchmove', (event) => {
+            if (!touchScroll || event.touches.length !== 1 || term.hasSelection())
+                return;
+            const y = event.touches[0].clientY;
+            const cellHeight = getCellSize().height || 16;
+            touchScroll.acc += touchScroll.y - y;
+            touchScroll.y = y;
+            const lines = Math.trunc(touchScroll.acc / cellHeight);
+            if (lines !== 0) {
+                touchScroll.acc -= lines * cellHeight;
+                touchScroll.moved = true;
+                term.scrollLines(lines);
+                scheduleScrollSync();
+            }
+            event.preventDefault();
+        }, {capture: true, passive: false});
         terminalElement.addEventListener('touchend', (event) => {
+            const scrolled = touchScroll?.moved;
+            touchScroll = null;
             if (term.hasSelection())
                 term.clearSelection();
             event.preventDefault();
             event.stopImmediatePropagation();
-            native.focus();
+            if (!scrolled)
+                native.focus();
         }, {capture: true});
         terminalElement.addEventListener('mousedown', (event) => {
             event.preventDefault();

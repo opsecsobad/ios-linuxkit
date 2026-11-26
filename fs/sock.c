@@ -1148,6 +1148,11 @@ int_t sys_setsockopt(fd_t sock_fd, dword_t level, dword_t option, addr_t value_a
     // Tailscale's Linux netns path requests SO_BINDTODEVICE. Keep this
     // compatibility opt-in with netlink; honour the binding rather than silently
     // ignoring it. Darwin takes an interface index instead of a Linux name.
+    // An empty name means "unbind" on Linux and always succeeds. nmap and
+    // other tools issue it unconditionally, so accept it even without netlink.
+    if (level == SOL_SOCKET_ && option == 25 &&
+            (value_len == 0 || value[0] == '\0') && !ish_netlink_stub_enabled())
+        goto out;
     if (level == SOL_SOCKET_ && option == 25 && ish_netlink_stub_enabled()) {
         if (value_len > IF_NAMESIZE) return _EINVAL;
         char name[IF_NAMESIZE + 1] = {0};
