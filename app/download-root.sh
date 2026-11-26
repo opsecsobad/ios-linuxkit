@@ -21,7 +21,13 @@ tmpdir="$(mktemp -d "$(dirname "$output")/.linuxkit-root.XXXXXX")"
 trap 'rm -rf "$tmpdir"' EXIT
 trap 'exit 1' INT TERM
 archive="$tmpdir/root.tar.gz"
-curl --fail --location --retry 2 "https://$ROOTFS_URL" --output "$archive"
+# ROOTFS_FILE lets CI package a locally built rootfs (e.g. the Debian edition)
+# instead of downloading ROOTFS_URL. The SHA-256 check still applies.
+if [ -n "${ROOTFS_FILE:-}" ]; then
+    cp "$ROOTFS_FILE" "$archive"
+else
+    curl --fail --location --retry 2 "https://$ROOTFS_URL" --output "$archive"
+fi
 if command -v sha256sum >/dev/null 2>&1; then
     actual="$(sha256sum "$archive" | cut -d ' ' -f 1)"
 else
@@ -30,8 +36,16 @@ fi
 expected="$(printf '%s' "$ROOTFS_SHA256" | tr 'A-F' 'a-f')"
 [ "$actual" = "$expected" ] || { echo 'Rootfs SHA-256 mismatch' >&2; exit 1; }
 
-tar -xzf "$archive" -C "$tmpdir" ./bin/busybox 2>/dev/null || tar -xzf "$archive" -C "$tmpdir" bin/busybox
-description="$(file "$tmpdir/bin/busybox")"
+# Alpine ships /bin/busybox; merged-/usr distros (Debian) ship /usr/bin/bash.
+probe=""
+for candidate in ./bin/busybox bin/busybox ./usr/bin/bash usr/bin/bash; do
+    if tar -xzf "$archive" -C "$tmpdir" "$candidate" 2>/dev/null; then
+        probe="$tmpdir/$candidate"
+        break
+    fi
+done
+[ -n "$probe" ] || { echo 'Rootfs has neither bin/busybox nor usr/bin/bash' >&2; exit 1; }
+description="$(file "$probe")"
 
 case "$rootfs_arch:$description" in
     aarch64:*"ARM aarch64"*) ;;

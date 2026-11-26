@@ -1,0 +1,124 @@
+name: Build Debian edition IPA
+
+# Builds an unsigned LinuxKit IPA whose default root filesystem is Debian
+# trixie (arm64) with bash + apt. Sign/install it with SideStore, AltStore
+# or Sideloadly. Each run publishes a GitHub pre-release with the IPA.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [debian-edition]
+    paths-ignore: ['docs/**', '**.md']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: debian-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rootfs:
+    name: Debian arm64 rootfs
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build rootfs
+        run: bash scripts/debian-rootfs/build.sh out/debian-arm64-rootfs.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debian-rootfs
+          path: out/debian-arm64-rootfs.tar.gz
+          retention-days: 14
+          compression-level: 0
+
+  ipa:
+    name: Unsigned IPA (macOS)
+    needs: rootfs
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        run: brew install meson ninja
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: debian-rootfs
+          path: ${{ runner.temp }}/rootfs
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          meson --version
+          ninja --version
+
+      - name: Build app
+        run: |
+          set -o pipefail
+          ROOTFS="$RUNNER_TEMP/rootfs/debian-arm64-rootfs.tar.gz"
+          SHA=$(shasum -a 256 "$ROOTFS" | cut -d ' ' -f 1)
+          echo "rootfs sha256: $SHA"
+          xcodebuild \
+            -project iSH.xcodeproj \
+            -scheme iSH-ARM64 \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            ROOTFS_FILE="$ROOTFS" \
+            ROOTFS_SHA256="$SHA" \
+            ROOTFS_ARCH=aarch64 \
+            build 2>&1 | tee xcodebuild.log | grep -E --line-buffered '(error|warning: .*rootfs|\*\* BUILD)' || true
+          grep -q '\*\* BUILD SUCCEEDED \*\*' xcodebuild.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          retention-days: 14
+
+      - name: Package IPA
+        run: |
+          APP=$(find build/Build/Products -maxdepth 2 -name 'LinuxKit.app' -type d | head -n 1)
+          test -n "$APP" || { echo 'LinuxKit.app not found'; find build/Build/Products -maxdepth 2; exit 1; }
+          test -f "$APP/root.tar.gz" || { echo 'root.tar.gz missing from app bundle'; exit 1; }
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry LinuxKit-Debian.ipa Payload
+          ls -lh LinuxKit-Debian.ipa "$APP/root.tar.gz"
+          shasum -a 256 LinuxKit-Debian.ipa | tee LinuxKit-Debian.ipa.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LinuxKit-Debian-ipa
+          path: |
+            LinuxKit-Debian.ipa
+            LinuxKit-Debian.ipa.sha256
+          retention-days: 30
+          compression-level: 0
+
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="debian-build-${{ github.run_number }}"
+          gh release create "$TAG" \
+            LinuxKit-Debian.ipa LinuxKit-Debian.ipa.sha256 \
+            "$RUNNER_TEMP/rootfs/debian-arm64-rootfs.tar.gz" \
+            --target "${{ github.sha }}" \
+            --prerelease \
+            --title "LinuxKit Debian edition — build ${{ github.run_number }}" \
+            --notes "Unsigned IPA built from ${{ github.sha }}. Debian trixie arm64 + bash + apt. Install with SideStore (My Apps → +). SHA-256: $(cut -d ' ' -f 1 LinuxKit-Debian.ipa.sha256)"

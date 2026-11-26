@@ -165,7 +165,7 @@ bool (*remove_user_default)(const char *name);
             kPreferenceHideExtraKeysWithExternalKeyboardKey: @(NO),
             kPreferenceOverrideControlSpaceKey: @(NO),
             kPreferenceDisableDimmingKey: @(NO),
-            kPreferenceLaunchCommandKey: @[@"/bin/login", @"-f", @"root"],
+            kPreferenceLaunchCommandKey: @[@"/usr/local/bin/linuxkit-login"], // Debian edition: see scripts/debian-rootfs/setup.sh
             kPreferenceBootCommandKey: @[@"/sbin/init"],
             kPreferenceBlinkCursorKey: @(NO),
             kPreferenceCursorStyleKey: @(CursorStyleBlock),
