@@ -8,7 +8,7 @@ export DEBIAN_FRONTEND=noninteractive
 # app/RootfsPatch.bundle/files is mounted at /linuxkit-overlay. The app also
 # writes these into existing installs on update, so this is the single source
 # for linuxkit-login, /etc/profile.d/linuxkit.sh, apt cache settings, ...
-tar -C /linuxkit-overlay -cf - . | tar -C / -xf - --keep-directory-symlink --no-same-owner
+tar -C /linuxkit-overlay --exclude=./etc/resolv.conf -cf - . | tar -C / -xf - --keep-directory-symlink --no-same-owner  # resolv.conf is a Docker bind mount; build.sh writes it
 chmod 755 /usr/local/bin/linuxkit-login
 
 # --- apt/dpkg tuning for the emulator ------------------------------------
