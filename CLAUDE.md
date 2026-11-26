@@ -34,6 +34,26 @@ The developer machine is Arch Linux x86_64; iOS builds only happen in GitHub Act
   `gh run watch <id> -R opsecsobad/ios-linuxkit --exit-status` (run it in the background; macOS runners queue).
 - Never use the inherited Fastlane lanes (they target upstream iSH).
 
+## Linux smoke test (use this first)
+
+`.github/workflows/smoke-test-debian.yml` builds the Linux CLI emulator on `ubuntu-24.04-arm`, imports
+the same Debian rootfs and runs `scripts/debian-rootfs/smoke.sh` (threads, DNS, curl, apt, nmap,
+Claude Code install). Failing tests are rerun with a `-Dlog=strace` build; logs are in the
+`smoke-logs` artifact (`gh run download <id> -n smoke-logs`). Most guest bugs reproduce here — much
+faster than an iPhone round-trip.
+
+## Emulator bugs found so far
+
+- `clone3` returned EINVAL → every glibc `pthread_create` failed. Now returns ENOSYS for anything
+  `clone()` can't express so glibc falls back (`kernel/fork.c`).
+- `mremap()` growth of an anonymous mapping returns EFAULT unless every page has identical pt flags
+  (`kernel/mmap.c`). apt's cache hit this ("Dynamic MMap ran out of room" → "Problem with
+  MergeList"); worked around with `APT::Cache-Start "268435456"` in `/etc/apt/apt.conf.d/99linuxkit`.
+  A real fix in `sys_mremap` would help other programs too.
+- (Earlier suspicion that lz4 decompression is broken was wrong — it was the mremap bug. Indexes
+  are still stored uncompressed via `98linuxkit-indexes`.)
+- `setsockopt(SO_BINDTODEVICE, "")` returned EINVAL (nmap error spam) — now accepted (`fs/sock.c`).
+
 ## Testing on the device
 
 - Target: iPhone 12 Pro (iPhone13,3), iOS 27.0.1, connected over USB (libimobiledevice works).

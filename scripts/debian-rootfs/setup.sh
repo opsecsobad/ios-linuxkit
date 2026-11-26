@@ -12,11 +12,16 @@ APT::Install-Recommends "false";
 APT::Install-Suggests "false";
 Acquire::Retries "3";
 Acquire::Languages "none";
+// The emulator's mremap() cannot grow apt's cache map ("Dynamic MMap ran out
+// of room" -> "Problem with MergeList"). Reserve enough up front that it never
+// has to grow; guest address space is reserved lazily, so this is cheap.
+APT::Cache-Start "268435456";
+APT::Cache-Grow "0";
+APT::Cache-Limit "536870912";
 EOF
 echo 'force-unsafe-io' > /etc/dpkg/dpkg.cfg.d/99linuxkit
-# The Docker image stores package lists lz4-compressed; lz4 decompression
-# returns corrupt data under the emulator ("Problem with MergeList ...lz4"),
-# so keep indexes uncompressed and download them as xz/gz.
+# Keep indexes uncompressed (plain text) to avoid a decompression step on
+# every apt run; downloads stay xz/gz.
 rm -f /etc/apt/apt.conf.d/docker-gzip-indexes
 cat > /etc/apt/apt.conf.d/98linuxkit-indexes <<'EOF'
 Acquire::GzipIndexes "false";
