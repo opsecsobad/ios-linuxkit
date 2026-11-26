@@ -77,6 +77,9 @@ struct rowcol {
     // WKWebView has its own long-press/touch recognizers; without this they
     // can keep ours from firing, so long-press selection never started.
     selectionGesture.delegate = self;
+    // Keep the web view's touches alive: the selection handles are DOM
+    // elements dragged with touch events, even when held past 0.5 s.
+    selectionGesture.cancelsTouchesInView = NO;
     [self addGestureRecognizer:selectionGesture];
     if (@available(iOS 16.0, *)) {
         self.terminalEditMenu = [[UIEditMenuInteraction alloc] initWithDelegate:self];
@@ -126,7 +129,7 @@ struct rowcol {
     }
 }
 
-static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight", @"newScrollTop", @"openLink", @"selectionChanged", @"copyText"};
+static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight", @"newScrollTop", @"openLink", @"selectionChanged", @"copyText", @"showMenu", @"hideMenu"};
 
 - (void)setTerminal:(Terminal *)terminal {
     if (_terminal) {
@@ -336,6 +339,21 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
     } else if ([message.name isEqualToString:@"openLink"]) {
         if ([message.body isKindOfClass:NSString.class])
             [UIApplication openURL:message.body];
+    } else if ([message.name isEqualToString:@"showMenu"]) {
+        // After a selection handle drag: show Copy/Copy All/Select All at the
+        // selection end ([x, y] in web view coordinates).
+        NSArray *point = message.body;
+        if (![point isKindOfClass:NSArray.class] || point.count != 2 ||
+            ![point[0] isKindOfClass:NSNumber.class] || ![point[1] isKindOfClass:NSNumber.class])
+            return;
+        CGPoint anchor = [self convertPoint:CGPointMake([point[0] doubleValue], [point[1] doubleValue])
+                                   fromView:self.terminal.webView];
+        [self becomeFirstResponder];
+        if (@available(iOS 16.0, *))
+            [self.terminalEditMenu presentEditMenuWithConfiguration:[UIEditMenuConfiguration configurationWithIdentifier:nil sourcePoint:anchor]];
+    } else if ([message.name isEqualToString:@"hideMenu"]) {
+        if (@available(iOS 16.0, *))
+            [self.terminalEditMenu dismissMenu];
     } else if ([message.name isEqualToString:@"copyText"]) {
         // OSC 52 from the guest (e.g. Claude Code's login URL).
         if ([message.body isKindOfClass:NSString.class] && [message.body length] <= 1024 * 1024)

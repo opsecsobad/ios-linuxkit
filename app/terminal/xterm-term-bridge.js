@@ -95,7 +95,14 @@
     let nativeScrollRequest = null;
     let oldProps = {};
     let xtermAppActive = null;
-    let selectionAnchor = null;
+    // iOS-style selection: inclusive linear cell indices (row * cols + col).
+    let selectionAnchor = null;   // {start, end} of the long-pressed word
+    let selStart = null;
+    let selEnd = null;
+    let handleDrag = null;        // 'start' | 'end' while a handle is dragged
+    let gestureOnHandle = false;  // native long-press began on a handle
+    let selectionHandles = null;  // created lazily (DOM + CSS)
+    let selectionGeneration = 0;  // bumped by each long-press selection
 
     // ── Terminal setup ────────────────────────────────────────────────────────
     const term = new Terminal({
@@ -165,7 +172,14 @@
     });
     term.onScroll(scheduleScrollSync);
     term.onCursorMove(syncApplicationCursor);
-    term.onSelectionChange(() => native.selectionChanged(term.getSelection()));
+    term.onSelectionChange(() => {
+        native.selectionChanged(term.getSelection());
+        if (!term.hasSelection())
+            selStart = selEnd = null;
+        positionSelectionHandles();
+    });
+    term.onScroll(() => positionSelectionHandles());
+    term.onResize(() => positionSelectionHandles());
 
     term.open(terminalElement);
     installNativeFocusAdapter();
@@ -213,19 +227,37 @@
         copy() {
             return term.getSelection();
         },
+        // Native long-press began: select the word under the finger.
         beginSelection(x, y) {
-            selectionAnchor = selectionCell(x, y);
-            if (selectionAnchor)
-                term.select(selectionAnchor.col, selectionAnchor.row, 1);
-        },
-        extendSelection(x, y) {
-            const end = selectionCell(x, y);
-            if (!selectionAnchor || !end)
+            gestureOnHandle = handleDrag !== null || isOnSelectionHandle(x, y);
+            if (gestureOnHandle)
+                return 'handle';
+            const cell = selectionCell(x, y);
+            if (!cell)
                 return;
-            const a = selectionAnchor.row * term.cols + selectionAnchor.col;
-            const b = end.row * term.cols + end.col;
-            const start = Math.min(a, b);
-            term.select(start % term.cols, Math.floor(start / term.cols), Math.abs(a - b) + 1);
+            const [start, end] = wordBounds(cell);
+            selectionGeneration++;
+            selectionAnchor = {start, end};
+            selStart = start;
+            selEnd = end;
+            applySelection();
+        },
+        // Long-press drag: grow the selection from the word toward the finger.
+        extendSelection(x, y) {
+            if (gestureOnHandle || handleDrag !== null || !selectionAnchor)
+                return;
+            const cell = selectionCell(x, y);
+            if (!cell)
+                return;
+            const p = linearCell(cell);
+            if (p >= selectionAnchor.start) {
+                selStart = selectionAnchor.start;
+                selEnd = Math.max(p, selectionAnchor.end);
+            } else {
+                selStart = p;
+                selEnd = selectionAnchor.end;
+            }
+            applySelection();
         },
         selectAll() { term.selectAll(); },
         // Whole buffer (scrollback + screen) as text; soft-wrapped rows joined.
@@ -246,7 +278,7 @@
                 lines.pop();
             return lines.join('\n');
         },
-        clearSelection() { selectionAnchor = null; term.clearSelection(); },
+        clearSelection() { clearTermSelection(); },
         setFocused(focused) {
             terminalElement.classList.toggle('terminal-focused', !!focused);
             setXtermAppActive(!!focused);
@@ -328,6 +360,171 @@
         };
     }
 
+    // ── iOS-style selection handles ───────────────────────────────────────────
+    function linearCell(cell) {
+        return cell.row * term.cols + cell.col;
+    }
+
+    function applySelection() {
+        if (selStart === null || selEnd === null)
+            return;
+        const a = Math.min(selStart, selEnd);
+        const b = Math.max(selStart, selEnd);
+        term.select(a % term.cols, Math.floor(a / term.cols), b - a + 1);
+    }
+
+    function clearTermSelection() {
+        selectionAnchor = null;
+        selStart = selEnd = null;
+        handleDrag = null;
+        term.clearSelection();
+        positionSelectionHandles();
+    }
+
+    // Whitespace-delimited token, so paths/URLs/flags select in one go.
+    function wordBounds(cell) {
+        const line = term.buffer.active.getLine(cell.row);
+        const at = (col) => line?.getCell(col)?.getChars() || '';
+        const isWord = (col) => /\S/.test(at(col));
+        const here = linearCell(cell);
+        if (!isWord(cell.col))
+            return [here, here];
+        let s = cell.col;
+        let e = cell.col;
+        while (s > 0 && isWord(s - 1))
+            s--;
+        while (e < term.cols - 1 && (isWord(e + 1) || at(e + 1) === ''))
+            e++;
+        while (e > s && !isWord(e))
+            e--;
+        return [cell.row * term.cols + s, cell.row * term.cols + e];
+    }
+
+    function createSelectionHandles() {
+        const style = document.createElement('style');
+        style.textContent = `
+            .sel-handle { position: fixed; width: 44px; margin-left: -22px; z-index: 1000;
+                          touch-action: none; -webkit-user-select: none; display: none; }
+            .sel-knob { position: absolute; left: 16px; width: 12px; height: 12px;
+                        border-radius: 6px; background: #0a84ff; }
+            .sel-bar { position: absolute; left: 21px; width: 2px; background: #0a84ff; }`;
+        document.head.appendChild(style);
+        const make = (kind) => {
+            const el = document.createElement('div');
+            el.className = `sel-handle sel-handle-${kind}`;
+            el.innerHTML = '<div class="sel-knob"></div><div class="sel-bar"></div>';
+            document.body.appendChild(el);
+            el.addEventListener('touchstart', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                handleDrag = kind;
+                native.hideMenu();
+            }, {passive: false});
+            el.addEventListener('touchmove', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (handleDrag !== kind || !event.touches.length)
+                    return;
+                moveSelectionHandle(kind, event.touches[0].clientX, event.touches[0].clientY);
+            }, {passive: false});
+            const finish = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (handleDrag !== kind)
+                    return;
+                handleDrag = null;
+                showMenuForSelection();
+            };
+            el.addEventListener('touchend', finish, {passive: false});
+            el.addEventListener('touchcancel', finish, {passive: false});
+            return el;
+        };
+        return {start: make('start'), end: make('end')};
+    }
+
+    function isOnSelectionHandle(x, y) {
+        const el = document.elementFromPoint(x, y);
+        return !!el?.closest?.('.sel-handle');
+    }
+
+    function moveSelectionHandle(kind, x, y) {
+        if (selStart === null || selEnd === null)
+            return;
+        const cellHeight = getCellSize().height || 16;
+        // The knob sits above (start) / below (end) the text; aim at the text row.
+        const cell = selectionCell(x, kind === 'start' ? y + cellHeight * 0.9 : y - cellHeight * 0.9);
+        if (!cell)
+            return;
+        const p = linearCell(cell);
+        const lo = Math.min(selStart, selEnd);
+        const hi = Math.max(selStart, selEnd);
+        if (kind === 'start') {
+            selStart = Math.min(p, hi);
+            selEnd = hi;
+        } else {
+            selStart = lo;
+            selEnd = Math.max(p, lo);
+        }
+        applySelection();
+    }
+
+    function selectionEdgeRect(index, trailing) {
+        const screen = terminalElement.querySelector('.xterm-screen');
+        const cell = getCellSize();
+        if (!screen || !cell.width || !cell.height)
+            return null;
+        const rect = screen.getBoundingClientRect();
+        const row = Math.floor(index / term.cols) - term.buffer.active.viewportY;
+        if (row < 0 || row >= term.rows)
+            return null;
+        const col = (index % term.cols) + (trailing ? 1 : 0);
+        return {x: rect.left + col * cell.width, y: rect.top + row * cell.height, height: cell.height};
+    }
+
+    function positionSelectionHandles() {
+        if (!selectionHandles) {
+            if (!document.body)
+                return;
+            selectionHandles = createSelectionHandles();
+        }
+        const show = term.hasSelection() && selStart !== null && selEnd !== null;
+        const place = (el, edge, kind) => {
+            if (!show || !edge) {
+                el.style.display = 'none';
+                return;
+            }
+            const knob = el.firstChild;
+            const bar = el.lastChild;
+            el.style.display = 'block';
+            // Keep knobs on screen at column 0 / the last column.
+            el.style.left = `${Math.max(7, Math.min(window.innerWidth - 7, edge.x))}px`;
+            el.style.height = `${edge.height + 12}px`;
+            if (kind === 'start') {
+                el.style.top = `${edge.y - 12}px`;
+                knob.style.top = '0px';
+                bar.style.top = '10px';
+            } else {
+                el.style.top = `${edge.y}px`;
+                bar.style.top = '0px';
+                knob.style.top = `${edge.height - 1}px`;
+            }
+            bar.style.height = `${edge.height + 2}px`;
+        };
+        const lo = show ? Math.min(selStart, selEnd) : 0;
+        const hi = show ? Math.max(selStart, selEnd) : 0;
+        place(selectionHandles.start, show && selectionEdgeRect(lo, false), 'start');
+        place(selectionHandles.end, show && selectionEdgeRect(hi, true), 'end');
+    }
+
+    function showMenuForSelection() {
+        if (selStart === null || selEnd === null)
+            return;
+        const edge = selectionEdgeRect(Math.max(selStart, selEnd), true)
+            || selectionEdgeRect(Math.min(selStart, selEnd), false);
+        if (edge)
+            native.showMenu([edge.x, edge.y + edge.height]);
+    }
+
     function installFocusBridge() {
         // touchstart is cancelled (to keep WebKit from selecting/zooming),
         // which also stops UIKit's pan from scrolling the native scroll view.
@@ -336,7 +533,7 @@
         terminalElement.addEventListener('touchstart', (event) => {
             touchScroll = event.touches.length === 1
                 ? {y: event.touches[0].clientY, acc: 0, moved: false,
-                   hadSelection: term.hasSelection()}
+                   hadSelection: term.hasSelection(), generation: selectionGeneration}
                 : null;
             if (!term.hasSelection())
                 event.preventDefault();
@@ -362,12 +559,11 @@
             // A tap dismisses a selection that existed before it. A selection
             // made during this touch (long-press) must survive the finger lift,
             // or the Copy menu has nothing to copy.
-            const dismissSelection = touchScroll?.hadSelection;
+            const dismissSelection = touchScroll?.hadSelection &&
+                touchScroll.generation === selectionGeneration;
             touchScroll = null;
-            if (dismissSelection && term.hasSelection()) {
-                selectionAnchor = null;
-                term.clearSelection();
-            }
+            if (dismissSelection && term.hasSelection())
+                clearTermSelection();
             event.preventDefault();
             event.stopImmediatePropagation();
             if (!scrolled)
@@ -557,8 +753,7 @@
             background: style.backgroundColor,
             cursor: style.cursorColor || style.foregroundColor,
             cursorAccent: style.backgroundColor,
-            selectionBackground: style.foregroundColor,
-            selectionForeground: style.backgroundColor,
+            selectionBackground: 'rgba(10, 132, 255, 0.40)',
         };
         if (Array.isArray(style.colorPaletteOverrides)) {
             for (let i = 0; i < Math.min(ansiColorNames.length, style.colorPaletteOverrides.length); i++)
